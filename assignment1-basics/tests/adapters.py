@@ -12,6 +12,8 @@ from torch import Tensor
 from cs336_basics.tokenizer import train_bpe, bpeTokenizer
 from cs336_basics import nn_utils
 from cs336_basics.transformer import MultiHeadSelfAttention
+from cs336_basics.transformer import TransformerBlock
+from cs336_basics.transformer import TransformerLM
 
 def run_linear(
     d_in: int,
@@ -340,7 +342,29 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    
+    block = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta,
+                             device=in_features.device, dtype=in_features.dtype)
+    
+    # Load weights into the block's components
+    block.ln1.gain.data.copy_(weights["ln1.weight"])
+    block.ln2.gain.data.copy_(weights["ln2.weight"])
+    
+    block.attn.q_proj.weight.data.copy_(weights["attn.q_proj.weight"])
+    block.attn.k_proj.weight.data.copy_(weights["attn.k_proj.weight"])
+    block.attn.v_proj.weight.data.copy_(weights["attn.v_proj.weight"])
+    block.attn.output_proj.weight.data.copy_(weights["attn.output_proj.weight"])
+    
+    block.ffn.w1.data.copy_(weights["ffn.w1.weight"])
+    block.ffn.w2.data.copy_(weights["ffn.w2.weight"])
+    block.ffn.w3.data.copy_(weights["ffn.w3.weight"])
+    
+    # Create default token positions
+    seq_len = in_features.size(1)
+    token_positions = torch.arange(seq_len, device=in_features.device).expand(in_features.size(0), -1)
+
+    return block.forward(in_features, token_positions)
+
 
 
 def run_transformer_lm(
@@ -422,7 +446,51 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+
+    # Create TransformerLM with the specified parameters
+    model = TransformerLM(
+        vocab_size=vocab_size,
+        context_length=context_length,
+        d_model=d_model,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        theta=rope_theta,
+        device=in_indices.device,
+        dtype=torch.float32
+    )
+    
+    # Copy weights into the model
+    # Token embeddings
+    model.token_embeddings.weight.data.copy_(weights["token_embeddings.weight"])
+    
+    # Final layer norm
+    model.ln_final.gain.data.copy_(weights["ln_final.weight"])
+    
+    # LM head
+    model.lm_head.weight.data.copy_(weights["lm_head.weight"])
+    
+    # Transformer layers
+    for i in range(num_layers):
+        layer_prefix = f"layers.{i}."
+        
+        # Layer norms
+        model.layers[i].ln1.gain.data.copy_(weights[f"{layer_prefix}ln1.weight"])
+        model.layers[i].ln2.gain.data.copy_(weights[f"{layer_prefix}ln2.weight"])
+        
+        # Attention weights
+        model.layers[i].attn.q_proj.weight.data.copy_(weights[f"{layer_prefix}attn.q_proj.weight"])
+        model.layers[i].attn.k_proj.weight.data.copy_(weights[f"{layer_prefix}attn.k_proj.weight"])
+        model.layers[i].attn.v_proj.weight.data.copy_(weights[f"{layer_prefix}attn.v_proj.weight"])
+        model.layers[i].attn.output_proj.weight.data.copy_(weights[f"{layer_prefix}attn.output_proj.weight"])
+        
+        # Feed-forward weights
+        model.layers[i].ffn.w1.data.copy_(weights[f"{layer_prefix}ffn.w1.weight"])
+        model.layers[i].ffn.w2.data.copy_(weights[f"{layer_prefix}ffn.w2.weight"])
+        model.layers[i].ffn.w3.data.copy_(weights[f"{layer_prefix}ffn.w3.weight"])
+    
+    # Run forward pass
+    return model(in_indices)
 
 
 def run_rmsnorm(
