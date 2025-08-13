@@ -20,6 +20,8 @@ from cs336_basics.loss import cross_entropy
 from cs336_basics.optim import AdamW, get_lr_cosine_schedule
 from cs336_basics.optim import gradient_clipping
 
+from cs336_basics.dataloader import get_batch
+
 def run_linear(
     d_in: int,
     d_out: int,
@@ -567,7 +569,9 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+
+    return get_batch(dataset, batch_size, context_length, device)
+
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
@@ -674,7 +678,16 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+
+    # create a dict to save information
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'iteration': iteration
+    }
+    
+    # save dict to indicated path
+    torch.save(checkpoint, out)
 
 
 def run_load_checkpoint(
@@ -695,7 +708,16 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+
+    # load checkpoint
+    checkpoint = torch.load(src)
+    
+    # restore the model and optimizer state
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    
+    # return the number of iteration
+    return checkpoint['iteration']
 
 
 def get_tokenizer(
