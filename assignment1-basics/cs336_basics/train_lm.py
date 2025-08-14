@@ -38,6 +38,15 @@ from cs336_basics.loss import cross_entropy
 from cs336_basics.dataloader import get_batch
 from cs336_basics.tokenizer import bpeTokenizer
 
+from torch.utils.tensorboard import SummaryWriter
+import time
+
+log_dir = '/root/tf-logs/'
+
+# 初始化SummaryWriter，可以指定日志保存目录
+writer = SummaryWriter(log_dir)
+
+
 # setup logging
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -499,6 +508,12 @@ def train(
             training_stats["learning_rate"].append(lr)
             training_stats["iterations"].append(it)
 
+            # 将loss写入TensorBoard
+            writer.add_scalar('Loss/train', loss.item(), it)
+            
+            # 也可以记录学习率
+            writer.add_scalar('Learning Rate', lr, it)
+
 
             # Track training stats
             # if it % log_interval == 0:
@@ -543,6 +558,9 @@ def train(
                     device=device,
                     eval_iters=eval_iters
                 )
+
+                # record the val-loss
+                writer.add_scalar('val-loss', val_loss, it)
                 
                 # the better val-loss, save the checkpoint
                 if use_wandb:
